@@ -1,8 +1,10 @@
 # Slim_notebook
 
-notes for slim version 5 (lessons and exercises)
+This repository tracks notes for slim v.5's workshop. 
+The software and lessons can be found at this [link](https://messerlab.org/slim/) and the publication describing the innovations with v.5 is [here](https://academic.oup.com/mbe/article/43/1/msaf313/8342840)
 
-slim version 5 can be acquired from this link
+
+Example code block:
 
 ```
 //run to tick 10000
