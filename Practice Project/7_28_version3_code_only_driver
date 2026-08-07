@@ -1,0 +1,122 @@
+initialize() {
+	initializeSLiMModelType("nonWF");
+	
+	if (!exists("K")) {
+		defineConstant("K", 100000);	// population size equilibrium
+	}
+	
+	//initial population size
+	if (!exists("initialpop")) {
+		defineConstant("initialpop", 1);
+		}
+		
+	//age
+	if (!exists("age")) {
+	defineConstant("age", 1); }
+
+    // neutral mutations, which are allowed to fix
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	m1.convertToSubstitution = T;
+	
+	//mean=shape/rate. shape=0.47, rate=34
+	initializeMutationType("m2", 0.5, "g", 0.01382, 0.47);
+	m2.convertToSubstitution = T;
+	
+	//3.6-10 * 10^-3 driver mutations accumulate per cell per year. 
+	initializeGenomicElementType("g1", c(m1, m2), c(9996, 4));
+	
+    //Length of chromosome
+	defineConstant("length", 3000000000);
+	initializeGenomicElement(g1, 0, length-1);
+	
+	//mutation rate adjusted for genome length per base position for a diploid cell. mutation/base pair in one divsion
+//	initializeMutationRate(mutrate/(length*2));
+	defineConstant("mutrate_early", 2.0);
+	defineConstant("mutrate_late", 16.8);
+
+	initializeMutationRate(0);
+	
+	//No recombination
+	initializeRecombinationRate(0);
+	
+	//differentiation type probability
+	defineConstant("psym", 0.8);
+	defineConstant("pasym", 0.1);
+	defineConstant("pdiff", 0.1);
+    
+}
+
+// create an initial population
+1 early() {
+
+	sim.addSubpop("p1", initialpop);
+	
+	defineGlobal("popcontrol_on", F);
+	
+	}
+
+2: first() {
+
+//determine which cells are dividing this tick/day
+N=p1.individualCount;
+
+if (popcontrol_on==F & N > 100000) {
+	defineGlobal("popcontrol_on", T);}
+
+if (popcontrol_on==F) {
+defineGlobal("pdiv", 1.0);
+p1.individuals.tag=rbinom(N,1,pdiv);
+defineGlobal("psym_adjusted", psym+pdiff);
+defineGlobal("pdiff_adjusted", 0.0);
+sim.chromosome.setMutationRate(mutrate_early/(length*2));
+} else {
+defineGlobal("pdiv", 0.00273);
+p1.individuals.tag=rbinom(N,1,pdiv);
+psum=psym+pdiff;
+defineGlobal("psym_adjusted", max(0.0, psum-(N/K)*(psum/2)));
+defineGlobal("pdiff_adjusted", psum-psym_adjusted);
+sim.chromosome.setMutationRate(mutrate_late/(length*2));
+}
+}
+
+//Kill off parent individuals who were tagged to reproduce
+2:early() {
+	sim.killIndividuals(p1.individuals[p1.individuals.tag == -1]);
+}
+
+// three possible fates: symmetric, asymmetric, symmetric differentiation
+reproduction() {
+	if (individual.tag == 0)
+		return;
+		
+	drivers = individual.uniqueMutationsOfType(m2);
+	s_sum=sum(drivers.selectionCoeff);
+	psum=psym+pdiff;
+	psym_driver=min(psym_adjusted*(1+s_sum), psum);
+	pdiff_driver=psum-psym_driver;
+	
+	division=sample(c("sym", "asym", "diff"), 1, weights=c(psym_driver,pasym,pdiff_driver));
+	
+	if (division=="sym") {
+		p1.addCloned(individual, 2);
+	}
+		
+	if (division=="asym") {
+		p1.addCloned(individual,1);
+	}
+	
+	//No new HSC is added for diff
+	
+	//Mark parent individual to be killed later
+	individual.tag=-1;
+}
+
+//Offspring created during reproduction of the tick cycle don't have a tag value so we need to add one here. 2:early() event will return error otherwise because not all individuals have a tag. 
+modifyChild() {
+	child.tag=0;
+    return T;
+}
+
+age*365 late() { 
+    sim.simulationFinished();
+}
