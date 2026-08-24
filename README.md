@@ -1,15 +1,11 @@
-# Slim_notebook
+# Slim_lesson_notes
 
-This repository tracks notes for slim v.5's workshop. 
-The software and lessons can be found at this [link](https://messerlab.org/slim/) and the publication describing the innovations with v.5 is [here](https://academic.oup.com/mbe/article/43/1/msaf313/8342840)
+This repository contains notes for the online Slim workshop from the Messer Lab which can be found [here](https://messerlab.org/slim/). 
 
+## lesson_notes
 
-Example code block:
+In this directory, notes are organized in order based on the lessons, and the lesson number can be found in the file name along with the topic. 
 
-```
-//run to tick 10000
-10000 late() {
-    sim.outputFixedMutations();
-    sim.simulationFinished();
-} 
-```
+## images
+
+This directory contains helpful images from the lesson videos. 
