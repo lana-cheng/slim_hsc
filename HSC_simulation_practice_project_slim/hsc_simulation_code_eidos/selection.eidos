@@ -1,0 +1,217 @@
+initialize() {
+	initializeSLiMModelType("nonWF");
+	
+	if (!exists("K")) {
+		defineConstant("K", 100000);	// population size equilibrium
+	}
+	
+	//initial population size
+	if (!exists("initialpop")) {
+		defineConstant("initialpop", 1);
+		}
+		
+	//age
+	if (!exists("age")) {
+	defineConstant("age", 70); }
+
+    // neutral mutations, which are allowed to fix
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	m1.convertToSubstitution = T;
+	
+	//mean=shape/rate. shape=0.47, rate=34
+	initializeMutationType("m2", 0.5, "g", 0.01382, 0.47);
+	m2.convertToSubstitution = T;
+	
+	//3.6-10 * 10^-3 driver mutations accumulate per cell per year. 
+	initializeGenomicElementType("g1", c(m1, m2), c(9996, 4));
+	
+    //Length of chromosome
+	defineConstant("length", 3000000000);
+	initializeGenomicElement(g1, 0, length-1);
+	
+	//mutation rate adjusted for genome length per base position for a diploid cell. mutation/base pair in one divsion
+//	initializeMutationRate(mutrate/(length*2));
+	defineConstant("mutrate_early", 2.45);
+	defineConstant("mutrate_late", 16.8);
+
+	initializeMutationRate(0);
+	
+	//No recombination
+	initializeRecombinationRate(0);
+	
+	//differentiation type probability
+	defineConstant("psym", 0.8);
+	defineConstant("pasym", 0.1);
+	defineConstant("pdiff", 0.1);
+    
+   //output tick cycle, average mutation count in each individual
+	if (!exists("mut_avg_file")){defineConstant("mut_avg_file",  "");}
+
+//Tick cycle, population size. popsize
+    if (!exists("pop_size_file")) {defineConstant("pop_size_file", "");}
+    
+    //allelefreq
+	if (!exists("allele_freq_file")) {defineConstant("allele_freq_file", "");}
+	
+	//track m2 mutations. driver
+	if (!exists("driver_track_file")) {defineConstant("driver_track_file", "");}
+
+	//print tick cycle
+	if (!exists("tick_count_file")) {defineConstant("tick_count_file", "");}
+}
+
+// create an initial population
+1 early() {
+
+	sim.addSubpop("p1", initialpop);
+	
+	defineGlobal("popcontrol_on", F);
+	
+	//header
+	if (mut_avg_file != "") {
+		writeFile(mut_avg_file, "tick,N,avg number of mutations in an individual");}
+		
+	//popsize
+	if (pop_size_file!=""){
+	writeFile(pop_size_file, "tick cyle, population size");
+	}
+	
+	//allelefreq
+	if (allele_freq_file!=""){
+	writeFile(allele_freq_file, "lower,upper,number");
+	}
+	
+	//track driver
+	if (driver_track_file != "") {
+		writeFile(driver_track_file, "tick,num of cells with drivers,frac with drivers,avg s_sum,max s_sum,num of distinct m2 mutations");
+	}
+	
+	}
+
+2: first() {
+
+if (tick_count_file!="") {
+	writeFile(tick_count_file, asString(sim.cycle), append=T);
+}
+
+//determine which cells are dividing this tick/day
+N=p1.individualCount;
+
+
+if (popcontrol_on==F & N > 100000) {
+	defineGlobal("popcontrol_on", T);}
+
+if (popcontrol_on==F) {
+defineGlobal("pdiv", 1.0-0.99727*sqrt((N/K))); //0.99727=1-0.00273
+p1.individuals.tag=rbinom(N,1,pdiv);
+defineGlobal("psym_adjusted", psym+pdiff);
+defineGlobal("pdiff_adjusted", 0.0);
+sim.chromosome.setMutationRate(mutrate_early/(length*2));
+} else {
+defineGlobal("pdiv", 0.00273);
+p1.individuals.tag=rbinom(N,1,pdiv);
+psum=psym+pdiff;
+defineGlobal("psym_adjusted", max(0.0, psum-(N/K)*(psum/2)));
+defineGlobal("pdiff_adjusted", psum-psym_adjusted);
+sim.chromosome.setMutationRate(mutrate_late/(length*2));
+}
+}
+
+//Kill off parent individuals who were tagged to reproduce
+2:early() {
+	sim.killIndividuals(p1.individuals[p1.individuals.tag == -1]);
+}
+
+// three possible fates: symmetric, asymmetric, symmetric differentiation
+reproduction() {
+	if (individual.tag == 0)
+		return;
+		
+	drivers = individual.uniqueMutationsOfType(m2);
+	s_sum=sum(drivers.selectionCoeff);
+	psum=psym+pdiff;
+	psym_driver=min(psym_adjusted*(1+s_sum), psum);
+	pdiff_driver=psum-psym_driver;
+	
+	division=sample(c("sym", "asym", "diff"), 1, weights=c(psym_driver,pasym,pdiff_driver));
+	
+	if (division=="sym") {
+		p1.addCloned(individual, 2);
+	}
+		
+	if (division=="asym") {
+		p1.addCloned(individual,1);
+	}
+	
+	//No new HSC is added for diff
+	
+	//Mark parent individual to be killed later
+	individual.tag=-1;
+}
+
+2:late(){
+	
+if (mut_avg_file!="") {
+	pop=p1.individualCount;
+	mut=sum(p1.individuals.uniqueMutations.size());
+	mut_avg=mut/pop;
+	writeFile(mut_avg_file, sim.cycle+","+pop+","+mut_avg, append=T);
+}
+
+//popsize
+if (pop_size_file!="") {
+	pop=p1.individualCount;
+	writeFile(pop_size_file, sim.cycle+","+pop, append=T);
+	}
+
+//drivers
+if (driver_track_file != "") {
+
+		inds = p1.individuals;
+		
+		counts = inds.countOfMutationsOfType(m2);
+		hasDriver = counts > 0; //logical
+		numWithDrivers = sum(hasDriver);
+		
+		if (numWithDrivers > 0) {
+		carriers = inds[hasDriver];
+		//applyValue takes value of current element in carriers, in this case, individual
+		sSums = sapply(carriers, "sum(applyValue.uniqueMutationsOfType(m2).selectionCoeff);");
+		avgS = mean(sSums);
+		maxS = max(sSums);} else {
+			avgS = 0.0;
+			maxS = 0.0;
+		}
+		
+		pop = p1.individualCount;
+		fracWithDrivers = numWithDrivers/pop;
+		numSegregating = size(sim.mutationsOfType(m2));
+
+		writeFile(driver_track_file, sim.cycle+","+numWithDrivers+","+fracWithDrivers+","+avgS+","+maxS+","+numSegregating, append=T);
+}
+}
+
+//Offspring created during reproduction of the tick cycle don't have a tag value so we need to add one here. 2:early() event will return error otherwise because not all individuals have a tag. 
+modifyChild() {
+	child.tag=0;
+    return T;
+}
+
+age*365 late() { 
+
+//allelefreq
+if (allele_freq_file!="") {
+	muts = sim.mutations;
+	freqs = sim.mutationFrequencies(p1, muts);
+	
+	bins = seq(0, 1.01, by=0.01);
+	for (i in 0:(size(bins)-2)) {
+		lower = bins[i];
+		upper = bins[i+1];
+		count = sum(freqs > lower & freqs <= upper);
+		writeFile(allele_freq_file, lower+","+upper+","+count, append=T);
+	}
+}
+
+    sim.simulationFinished();
+}

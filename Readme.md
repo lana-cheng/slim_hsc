@@ -1,0 +1,1 @@
+This repository contains two directories. `HSC_simulation_practice_project_slim/` contains files for an HSC simulation in slim. `Slim_lesson_notes/` contains lesson notes which follow along the lesson videos from the Slim workshop. 
